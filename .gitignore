@@ -1,0 +1,4 @@
+.vscode/browse.vc.*
+build/*
+tmp/*
+sdkconfig.old

@@ -1,4 +1,6 @@
 #!/bin/bash
+set -o pipefail
+
 if [ $# == 6 ]; then
     while getopts s:i:d: option; do
         case "${option}" in
@@ -31,6 +33,7 @@ FAILTOLOAD=0
 BADMD5HASH=0
 OK=0
 TOTAL=0
+zero=0
 
 mkdir -p $TMPDIR
 rm -f $TMPDIR/*
@@ -41,11 +44,21 @@ for ((J = 0; J < $ITERATIONS; J++)); do
     for I in ${!RESOURCE[*]}; do
         echo -e "Requesting ${RESOURCE[$I]}:"
         TOTAL=$((TOTAL + 1))
-        tmp="$(curl http://$SERVER/${RESOURCE[$I]} -sD - -w '\nTIMEELAPSED: %{time_total}\n' --connect-timeout 10 --max-time 10 --header 'Accept-Encoding: gzip, deflate' -o ./${TMPDIR}/${J}-${FILENAME[$I]} | grep "MD5HASH\|TIMEELAPSED")"
-        ret=$?
-        md5header=$(echo "${tmp}" | grep "MD5HASH" | awk '{print $2}')
-        loadtime=$(echo "${tmp}" | grep "TIMEELAPSED" | awk '{print $2}')
-        echo "RESOURCE: ${J}-${FILENAME[$I]} LOAD TIME: $loadtime s Header MD5 HASH: $md5header"
+        tmp="$(curl http://$SERVER/${RESOURCE[$I]} -sD - -w '\nTIMEELAPSED: %{time_total}\n' --connect-timeout 20 --max-time 20 --header 'Accept-Encoding: gzip, deflate' -o ./${TMPDIR}/${J}-${FILENAME[$I]} | grep "MD5HASH\|TIMEELAPSED")"
+        ret=${PIPESTATUS[0]}
+        if [ ! -f "./$TMPDIR/${J}-${FILENAME[$I]}" ]; then
+            ret=-1
+            filesize=0
+        else
+            filesize=$(du -sb "./$TMPDIR/${J}-${FILENAME[$I]}" | awk '{print $1}')
+        fi
+        if [ $filesize -eq $zero ]; then
+            ret=-1
+        else
+            md5header=$(echo "${tmp}" | grep "MD5HASH" | awk '{print $2}')
+            loadtime=$(echo "${tmp}" | grep "TIMEELAPSED" | awk '{print $2}')
+            echo "RESOURCE: ${J}-${FILENAME[$I]} LOAD TIME: $loadtime s Header MD5 HASH: $md5header"
+        fi
         if [[ $ret -ne 0 ]]; then
             FAILTOLOAD=$((FAILTOLOAD + 1))
             echo -e "\x1b[31m${FILENAME[$I]} FAIL TO LOAD\x1b[0m"
@@ -63,6 +76,7 @@ for ((J = 0; J < $ITERATIONS; J++)); do
                 echo -e "\x1b[31m${J}-${FILENAME[$I]} FAIL MD5 HASH\x1b[0m"
             fi
         fi
+        ret=0
         rm -f ./$TMPDIR/${J}-${FILENAME[$I]}
     done
 done
